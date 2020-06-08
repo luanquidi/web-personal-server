@@ -51,6 +51,53 @@ exports.signUp = (req, res) => {
   }
 };
 
+exports.signUpAdmin = (req, res) => {
+  const user = new User();
+  const { name, lastname, email, password, repeatPassword } = req.body;
+
+  user.name = name;
+  user.lastname = lastname;
+  user.email = email;
+  user.role = "admin";
+  user.active = true;
+
+  if (!password || !repeatPassword) {
+    res.status(404).send({ message: "Las contraseñas son obligatorias." });
+  } else {
+    if (password !== repeatPassword) {
+      res.status(404).send({ message: "Las contraseñas no son iguales." });
+    } else {
+      bcrypt.hash(password, null, null, (err, hash) => {
+        if (err) {
+          res.status(500).send({ message: "Error al encriptar contraseña." });
+        } else {
+          user.password = hash;
+          user.save((err, userSaved) => {
+            if (err) {
+              res
+                .status(500)
+                .send({ ok: false, message: "El usuario ya existe." });
+            } else {
+              if (!userSaved) {
+                res
+                  .status(404)
+                  .send({ ok: false, message: "Error al crear usuario." });
+              } else {
+                userSaved.password = ":)";
+                res.status(200).send({
+                  ok: true,
+                  message: "Usuario creado.",
+                  user: userSaved,
+                });
+              }
+            }
+          });
+        }
+      });
+    }
+  }
+};
+
 exports.signIn = (req, res) => {
   const params = req.body;
   const email = params.email.toLowerCase();
@@ -196,9 +243,126 @@ exports.uploadAvatar = (req, res) => {
           ok: true,
           message: "El usuario se ha actualizado correctamente.",
           user: userUpdated,
-          avatarName: fileName
+          avatarName: fileName,
         });
       });
     }
+  });
+};
+
+exports.getAvatar = (req, res) => {
+  const { avatarName } = req.params;
+
+  const filePath = "./uploads/avatar/" + avatarName;
+
+  fs.exists(filePath, (exists) => {
+    if (!exists) {
+      return res.status(404).send({
+        ok: false,
+        message: "No hay avatar con este nombre. (" + avatarName + ")",
+      });
+    }
+    return res.sendFile(path.resolve(filePath));
+  });
+};
+
+exports.updateUser = async (req, res) => {
+  const { id } = req.params;
+  const user = req.body;
+
+  user.email = user.email.toLowerCase();
+
+  if (user.password) {
+    await bcrypt.hash(user.password, null, null, (err, hash) => {
+      if (err) {
+        return res.status(500).send({
+          ok: false,
+          message: "Error al encriptar contraseña.",
+        });
+      }
+      user.password = hash;
+    });
+  }
+
+  User.findByIdAndUpdate({ _id: id }, user, (err, userUpdate) => {
+    if (err) {
+      return res.status(500).send({
+        ok: false,
+        message: "Error en el servidor al actualizar usuario.",
+      });
+    }
+
+    if (!userUpdate) {
+      return res.status(404).send({
+        ok: false,
+        message: "No se encontró el usuario a actualizar.",
+      });
+    }
+
+    return res.status(200).send({
+      ok: true,
+      message: "El usuario se actualizó correctamente.",
+    });
+  });
+};
+
+exports.activateUser = (req, res) => {
+  const { params, body } = req;
+  const active = body.active;
+  const _id = params.id;
+
+  console.log(_id, active);
+
+  User.findByIdAndUpdate(_id, { active }, (err, userUpdated) => {
+    if (err) {
+      return res.status(500).send({
+        ok: false,
+        message: "Error del servidor al activar usuario)",
+      });
+    }
+
+    if (!userUpdated) {
+      return res.status(404).send({
+        ok: false,
+        message: "No se encontró el usuario a activar.",
+      });
+    }
+
+    if (active === true) {
+      return res.status(200).send({
+        ok: true,
+        message: "Se ha activado correctamente",
+      });
+    }
+
+    return res.status(200).send({
+      ok: true,
+      message: "Se ha desactivado correctamente",
+    });
+  });
+};
+
+exports.deleteUser = (req, res) => {
+  const { id } = req.params;
+
+  User.findByIdAndRemove({ _id: id }, (err, userDeleted) => {
+    if (err) {
+      return res.status(500).send({
+        ok: false,
+        message: "Error del servidor al eliminar usuario)",
+      });
+    }
+
+    if (!userDeleted) {
+      return res.status(404).send({
+        ok: false,
+        message: "No se encontró el usuario a eliminar.",
+      });
+    }
+
+    return res.status(200).send({
+      ok: true,
+      message: "El usuario se ha eliminado correctamente.",
+    });
   });
 };
